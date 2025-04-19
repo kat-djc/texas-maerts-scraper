@@ -92,13 +92,6 @@ Friendlier PDF formats with improved MAERTs (easy tables) appeared in 1992 and g
  Despite this, extraction strategies were generally successful across reports.
 ![Sample Table](assets/doc.png)
 
-## Running the Code Yourself
-
-- Ensure you have Python 3 installed
-- From this repository, run `python3 -m venv virtual_env` to create its virtual environment
-- Run `. virtual_env/bin/activate` to activate the virtual environment
-- Run pip install -r requirements.txt to install the necessary Python libraries
-
 ## Contributors
 - Victoria Labmayr (@vickitran)
 - Kat de Jesus Chua (@kat-djc)
