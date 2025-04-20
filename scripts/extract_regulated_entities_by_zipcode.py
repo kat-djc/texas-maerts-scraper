@@ -165,6 +165,10 @@ def main():
     processed_zips = get_processed_zip_codes(DATA_PATH)
     remaining_zips = [z.strip() for z in tx_zip_codes if z.strip() not in processed_zips]
 
+    # Resume from ZIP code 79159
+    START_FROM = "79159"
+    remaining_zips = [z for z in remaining_zips if z > START_FROM]
+
     record_counts_path = os.path.join(DATA_PATH, "record_counts.csv")
     record_counts = []
 

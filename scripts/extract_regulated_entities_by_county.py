@@ -100,7 +100,7 @@ for county_index in county_indices:
 # Write the record counts CSV
 df_counts = pd.DataFrame(record_counts)
 df_counts.to_csv(os.path.join(DATA_PATH, "record_counts.csv"), index=False)
-print("📝 Saved record_counts.csv")
+print("Saved record_counts.csv")
 
 driver.quit()
-print("🎉 All counties processed!")
+print("All counties processed!")
