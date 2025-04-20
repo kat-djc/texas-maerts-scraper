@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Helpers
 def read_rn_numbers(csv_path):
     df = pd.read_csv(csv_path)
-    return df['rn_number'].unique()
+    return df['RN Number'].unique()
 
 def wait_for_download(directory, timeout=30):
     seconds = 0
@@ -59,6 +59,7 @@ def init_driver(download_dir):
     options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+
     driver = webdriver.Chrome(options=options)
     driver.implicitly_wait(5)
     return driver
@@ -76,15 +77,17 @@ def update_download_counts(rn_number, count, df):
     df.to_csv(DOWNLOAD_COUNTS_PATH, index=False)
     return df
 
-def safe_click(driver, by, value, retries=3):
-    for _ in range(retries):
+def safe_click(driver, by, value, retries=3, description=None):
+    for attempt in range(retries):
         try:
             el = driver.find_element(by, value)
+            logging.info(f"Clicking: {description or value}")
             el.click()
             return True
         except Exception as e:
-            logging.warning(f"Retry clicking failed element: {e}")
+            logging.warning(f"Attempt {attempt + 1} failed to click [{description or value}]: {e}")
             time.sleep(1)
+    logging.error(f"Failed to click element after {retries} attempts: [{description or value}]")
     return False
 
 def scrape_maert_for_rns(rn_numbers):
@@ -102,20 +105,35 @@ def scrape_maert_for_rns(rn_numbers):
                 driver = init_driver(tmp_dir)
                 driver.get("https://records.tceq.texas.gov/cs/idcplg?IdcService=TCEQ_SEARCH")
 
-                Select(driver.find_element(By.ID, 'xRecordSeries')).select_by_value('1081')
-                Select(driver.find_element(By.ID, 'xInsightDocumentType')).select_by_value('27')
-                Select(driver.find_element(By.XPATH, '/html/body/table[1]/tbody/tr[5]/td/table/tbody/tr/td/div/form/table/tbody/tr[4]/td/table/tbody/tr[1]/td[1]/select')).select_by_value('xRefNumTxt')
-                driver.find_element(By.XPATH, '/html/body/table[1]/tbody/tr[5]/td/table/tbody/tr/td/div/form/table/tbody/tr[4]/td/table/tbody/tr[1]/td[2]/input').send_keys(rn)
-                safe_click(driver, By.XPATH, "/html/body/table[1]/tbody/tr[5]/td/table/tbody/tr/td/div/form/table/tbody/tr[4]/td/table/tbody/tr[5]/td[3]/div/button[1]")
+                try:
+                    logging.info("Selecting dropdowns...")
+                    Select(driver.find_element(By.ID, 'xRecordSeries')).select_by_value('1081')
+                    Select(driver.find_element(By.ID, 'xInsightDocumentType')).select_by_value('27')
+                    Select(driver.find_element(By.XPATH, '/html/body/table[1]/tbody/tr[5]/td/table/tbody/tr/td/div/form/table/tbody/tr[4]/td/table/tbody/tr[1]/td[1]/select')).select_by_value('xRefNumTxt')
+                    logging.info("Dropdowns selected.")
+                except Exception as e:
+                    logging.error(f"Failed to select dropdowns: {e}")
+                    driver.quit()
+                    continue
+
+                try:
+                    logging.info("Entering RN number...")
+                    driver.find_element(By.XPATH, '/html/body/table[1]/tbody/tr[5]/td/table/tbody/tr/td/div/form/table/tbody/tr[4]/td/table/tbody/tr[1]/td[2]/input').send_keys(rn)
+                    safe_click(driver, By.XPATH, "/html/body/table[1]/tbody/tr[5]/td/table/tbody/tr/td/div/form/table/tbody/tr[4]/td/table/tbody/tr[5]/td[3]/div/button[1]", description="Search button")
+                except Exception as e:
+                    logging.error(f"Failed to enter RN or click Search: {e}")
+                    driver.quit()
+                    continue
 
                 while True:
-                    safe_click(driver, By.XPATH, "//a[contains(@href, \"addQueryFilter('xItemType', '1')\")]")
-                    time.sleep(2)
+                    #safe_click(driver, By.XPATH, "//a[contains(@href, \"addQueryFilter('xItemType', '1')\")]", description="MAERT filter link")
+                    #time.sleep(2)
 
                     try:
                         dfs = pd.read_html(StringIO(driver.page_source))
                         table = dfs[4]
                         maerts = table[table[12] == 'MAERT']
+                        logging.info(f"Found {len(maerts)} MAERT entries.")
                     except Exception as e:
                         logging.warning(f"Table parsing failed: {e}")
                         break
@@ -123,7 +141,7 @@ def scrape_maert_for_rns(rn_numbers):
                     for hyperlink, permit_number, date in zip(maerts[2], maerts[6], maerts[16]):
                         try:
                             logging.info(f"Attempting to download: {permit_number} for RN {rn}")
-                            safe_click(driver, By.LINK_TEXT, hyperlink)
+                            safe_click(driver, By.LINK_TEXT, hyperlink, description=f"MAERT link: {hyperlink}")
                             downloaded = wait_for_download(tmp_dir)
 
                             if downloaded and validate_pdf(downloaded):
@@ -139,11 +157,8 @@ def scrape_maert_for_rns(rn_numbers):
                         except Exception as download_err:
                             logging.warning(f"Download error for {permit_number}: {download_err}")
 
-                    try:
-                        next_button = driver.find_element(By.XPATH, "/html/body/table[1]/tbody/tr[5]/td/table/tbody/tr/td/div/div[2]/table/tbody/tr/td[5]/a")
-                        next_button.click()
-                        time.sleep(2)
-                    except NoSuchElementException:
+                    clicked_next = safe_click(driver, By.XPATH, "/html/body/table[1]/tbody/tr[5]/td/table/tbody/tr/td/div/div[2]/table/tbody/tr/td[5]/a", description="Next page button")
+                    if not clicked_next:
                         logging.info("No more pages.")
                         break
 
